@@ -43,7 +43,7 @@ async function run() {
 
     // middlewares
     const verifyToken = (req, res, next) => {
-      console.log(req.headers.authorization);
+      // console.log(req.headers.authorization);
 
       if(!req.headers.authorization){
         return res.status(401).send({message: 'Unauthorized access'})
@@ -63,7 +63,7 @@ async function run() {
       const email = req.decoded.email;
       const query = {email: email};
       const user = await userCollection.findOne(query);
-      const isAdmin = user?.role == 'admin';
+      const isAdmin = user?.role === 'admin';
       if(!isAdmin){
         return res.status(403).send({message: 'Forbidden Access'})
       }
@@ -258,6 +258,46 @@ async function run() {
         orders,
         revenue,
       })
+    })
+
+    // using aggregate pipeline
+    app.get('/order-stats', verifyToken, verifyAdmin, async (req, res) => {
+      const result = await paymentCollection.aggregate([
+        {
+          $unwind: '$menuItemIds'
+        },
+        {
+          $lookup: {
+            from: 'menu',
+            localField: 'menuItemIds',
+            foreignField: '_id',
+            as: 'menuItems'
+          }
+        },
+        {
+          $unwind: '$menuItems'
+        },
+        {
+          $group: {
+            _id: '$menuItems.category',
+            quantity: {
+              $sum: 1
+            },
+            revenue: {
+              $sum: '$menuItems.price'
+            }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            category: '$_id',
+            quantity: '$quantity',
+            revenue: '$revenue'
+          }
+        }
+      ]).toArray();
+      res.send(result);
     })
 
     // Send a ping to confirm a successful connection
